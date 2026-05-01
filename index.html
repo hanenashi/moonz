@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Moonz — Lunar Gravity Globe</title>
+
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #050505;
+      color: white;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    #hud {
+      position: fixed;
+      left: 12px;
+      top: 12px;
+      z-index: 10;
+      padding: 10px 12px;
+      max-width: 320px;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 10px;
+      backdrop-filter: blur(8px);
+      user-select: none;
+    }
+
+    #hud h1 {
+      margin: 0 0 4px;
+      font-size: 18px;
+      font-weight: 650;
+    }
+
+    #hud p {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.35;
+      opacity: 0.82;
+    }
+
+    #buttons {
+      margin-top: 9px;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      color: white;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 7px;
+      padding: 5px 8px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    button:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    #credit {
+      position: fixed;
+      right: 10px;
+      bottom: 8px;
+      z-index: 10;
+      font-size: 11px;
+      opacity: 0.55;
+      background: rgba(0, 0, 0, 0.35);
+      padding: 5px 7px;
+      border-radius: 6px;
+    }
+
+    @media (max-width: 640px) {
+      #hud {
+        left: 8px;
+        top: 8px;
+        max-width: calc(100vw - 40px);
+      }
+
+      #hud h1 {
+        font-size: 16px;
+      }
+
+      #hud p {
+        font-size: 12px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="hud">
+    <h1>Moonz</h1>
+    <p>
+      Lunar free-air gravity map wrapped as a rotatable globe.<br>
+      Drag to rotate. Wheel / pinch to zoom.
+    </p>
+
+    <div id="buttons">
+      <button id="toggleSpin">Pause spin</button>
+      <button id="resetView">Reset view</button>
+      <button id="flipMap">Flip map</button>
+    </div>
+  </div>
+
+  <div id="credit">
+    Texture: LDAM_GRGM1200A_007_700_16PPD.0centered.jpg
+  </div>
+
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+    import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js";
+
+    const TEXTURE_FILE = "./LDAM_GRGM1200A_007_700_16PPD.0centered.jpg";
+
+    let autoSpin = true;
+    let flipped = true;
+    let moon;
+
+    const scene = new THREE.Scene();
+
+    const camera = new THREE.PerspectiveCamera(
+      45,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      100
+    );
+
+    camera.position.set(0, 0, 3);
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: "high-performance"
+    });
+
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.rotateSpeed = 0.65;
+    controls.zoomSpeed = 0.85;
+    controls.minDistance = 1.35;
+    controls.maxDistance = 6;
+
+    controls.addEventListener("start", () => {
+      autoSpin = false;
+      document.getElementById("toggleSpin").textContent = "Resume spin";
+    });
+
+    const starGeometry = new THREE.BufferGeometry();
+    const starCount = 1800;
+    const starPositions = new Float32Array(starCount * 3);
+
+    for (let i = 0; i < starCount; i++) {
+      const radius = 25 + Math.random() * 50;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos((Math.random() * 2) - 1);
+
+      starPositions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+      starPositions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+      starPositions[i * 3 + 2] = radius * Math.cos(phi);
+    }
+
+    starGeometry.setAttribute("position", new THREE.BufferAttribute(starPositions, 3));
+
+    const stars = new THREE.Points(
+      starGeometry,
+      new THREE.PointsMaterial({
+        color: 0xffffff,
+        size: 0.045,
+        sizeAttenuation: true
+      })
+    );
+
+    scene.add(stars);
+
+    const loader = new THREE.TextureLoader();
+
+    loader.load(
+      TEXTURE_FILE,
+
+      texture => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.ClampToEdgeWrapping;
+        texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+        const geometry = new THREE.SphereGeometry(1, 192, 96);
+
+        const material = new THREE.MeshBasicMaterial({
+          map: texture
+        });
+
+        moon = new THREE.Mesh(geometry, material);
+
+        // Cylindrical maps often appear mirrored on the outside of a sphere.
+        // This makes the starting view sane. Button can toggle it.
+        moon.scale.x = -1;
+
+        scene.add(moon);
+      },
+
+      undefined,
+
+      error => {
+        console.error("Texture load failed:", error);
+        document.getElementById("hud").insertAdjacentHTML(
+          "beforeend",
+          "<p style='color:#ff8080;margin-top:8px'>Texture failed to load. Check filename/path. Because of course filenames are tiny landmines.</p>"
+        );
+      }
+    );
+
+    document.getElementById("toggleSpin").addEventListener("click", () => {
+      autoSpin = !autoSpin;
+      document.getElementById("toggleSpin").textContent = autoSpin ? "Pause spin" : "Resume spin";
+    });
+
+    document.getElementById("resetView").addEventListener("click", () => {
+      camera.position.set(0, 0, 3);
+      controls.target.set(0, 0, 0);
+      controls.update();
+
+      if (moon) {
+        moon.rotation.set(0, 0, 0);
+      }
+    });
+
+    document.getElementById("flipMap").addEventListener("click", () => {
+      if (!moon) return;
+
+      flipped = !flipped;
+      moon.scale.x = flipped ? -1 : 1;
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      if (moon && autoSpin) {
+        moon.rotation.y += 0.0017;
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    window.addEventListener("resize", () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
